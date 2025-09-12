@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: tracer-a
+    version: default
+  name: tracer-a
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tracer-a
+      version: default
+  template:
+    metadata:
+      labels:
+        app: tracer-a
+        version: default
+    spec:
+      containers:
+        - env:
+            - name: OTEL_TRACES_EXPORTER
+              value: otlp
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: service.name=$(APP_NAME).$(KUBERNETES_NAMESPACE)
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector.observability:4318
+            - name: SERVICE_NAME
+              value: "tracer-a"
+            - name: DOWNSTREAM_SERVICE_URL
+              value: "http://tracer-b:8080"
+          image: registry.js.design/library/tracer:v1
+          imagePullPolicy: IfNotPresent
+          name: tracer-a
+          ports:
+            - containerPort: 8888
+              name: http
+              protocol: TCP
+      restartPolicy: Always
+      schedulerName: default-scheduler
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: tracer-a
+  name: tracer-a
+spec:
+  ports:
+    - name: http
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    app: tracer-a
+  type: ClusterIP
