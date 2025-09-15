@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"io"
 	"log"
 	"net/http"
@@ -91,6 +94,32 @@ func main() {
 		}
 
 		log.Printf("[%s] completed %s in %s traceparent=%s", ServiceName, DownstreamServiceURL, time.Since(start), traceparent)
+	})
+
+	mux.HandleFunc("/error", func(w http.ResponseWriter, r *http.Request) {
+		span := trace.SpanFromContext(r.Context())
+		defer span.End()
+
+		log.Printf("[%s] incoming request %s %s msg=%s", ServiceName, r.Method, r.URL.Path, "处理请求时发生错误")
+		span.SetStatus(codes.Error, "发生错误")
+		span.AddEvent("error_occurred",
+			trace.WithAttributes(
+				attribute.String("type", "process_failed"),
+				attribute.String("message", "处理请求时发生错误"),
+				attribute.Bool("retryable", false),
+			),
+		)
+
+		resp := &Response{
+			Service: ServiceName,
+			Message: "处理请求时发生错误",
+			At:      time.Now().Format(time.RFC3339Nano),
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			log.Printf("[%s] encode response error: %v", ServiceName, err)
+		}
 	})
 
 	addr := fmt.Sprintf(":%d", port)
